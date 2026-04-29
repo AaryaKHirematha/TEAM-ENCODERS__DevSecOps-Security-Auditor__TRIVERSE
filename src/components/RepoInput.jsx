@@ -4,7 +4,9 @@ import {
   UploadCloud, 
   AlertCircle, 
   FileArchive,
-  X
+  X,
+  Globe,
+  GitBranch
 } from 'lucide-react'
 import ScanButton from './ScanButton'
 
@@ -16,6 +18,28 @@ function GithubIcon({ className }) {
   )
 }
 
+/**
+ * Detect what type of input the user is entering.
+ * Returns: 'repo' | 'url' | 'unknown'
+ */
+function detectInputType(value) {
+  if (!value) return 'unknown'
+  const trimmed = value.trim()
+  
+  // SSH format → repo
+  if (trimmed.match(/^git@/)) return 'repo'
+  // owner/repo shorthand → repo
+  if (trimmed.match(/^[\w.-]+\/[\w.-]+$/) && !trimmed.includes('.')) return 'repo'
+  // .git suffix → repo
+  if (trimmed.endsWith('.git')) return 'repo'
+  // Known git hosts
+  if (/github\.com|gitlab\.|bitbucket\.org/i.test(trimmed)) return 'repo'
+  // Any other URL-like string
+  if (trimmed.match(/^https?:\/\//i) || trimmed.includes('.')) return 'url'
+  
+  return 'unknown'
+}
+
 export default function RepoInput({ onScan, loading, error: externalError }) {
   const [url, setUrl] = useState('')
   const [file, setFile] = useState(null)
@@ -25,7 +49,7 @@ export default function RepoInput({ onScan, loading, error: externalError }) {
   const fileInputRef = useRef(null)
 
   const error = externalError || localError
-  const githubRegex = /^https?:\/\/(www\.)?github\.com\/[\w.-]+\/[\w.-]+\/?$/
+  const inputType = detectInputType(url)
 
   useEffect(() => {
     let interval
@@ -52,16 +76,25 @@ export default function RepoInput({ onScan, loading, error: externalError }) {
     setLocalError('')
 
     if (!url && !file) {
-      setLocalError('Please enter a GitHub URL or upload a ZIP file.')
+      setLocalError('Please enter a URL or upload a file to scan.')
       return
     }
-    if (url && !githubRegex.test(url)) {
-      setLocalError('Please enter a valid GitHub repository URL.')
-      return
-    }
-    if (file && !file.name.endsWith('.zip')) {
-      setLocalError('Only .zip files are supported.')
-      return
+
+    // Basic URL validation — accept virtually anything that looks like a URL
+    if (url) {
+      const trimmed = url.trim()
+      // Must be: a URL, git SSH, or owner/repo shorthand
+      const isValid = 
+        trimmed.match(/^https?:\/\/.+/) ||       // https://...
+        trimmed.match(/^git@.+:.+/) ||            // git@host:owner/repo
+        trimmed.match(/^[\w.-]+\/[\w.-]+$/) ||    // owner/repo
+        trimmed.match(/^[\w.-]+\.[\w.-]+/) ||     // domain.com or sub.domain.com
+        trimmed.includes('.')                      // anything with a dot
+      
+      if (!isValid) {
+        setLocalError('Please enter a valid URL, domain, or repository path.')
+        return
+      }
     }
 
     onScan({
@@ -80,8 +113,7 @@ export default function RepoInput({ onScan, loading, error: externalError }) {
     setUrl('')
     const droppedFile = e.dataTransfer.files[0]
     if (droppedFile) {
-      if (droppedFile.name.endsWith('.zip')) setFile(droppedFile)
-      else setLocalError('Only .zip files are supported.')
+      setFile(droppedFile)
     }
   }
 
@@ -90,8 +122,7 @@ export default function RepoInput({ onScan, loading, error: externalError }) {
     setUrl('')
     const selectedFile = e.target.files[0]
     if (selectedFile) {
-      if (selectedFile.name.endsWith('.zip')) setFile(selectedFile)
-      else setLocalError('Only .zip files are supported.')
+      setFile(selectedFile)
     }
   }
 
@@ -99,6 +130,12 @@ export default function RepoInput({ onScan, loading, error: externalError }) {
     setUrl(e.target.value)
     setLocalError('')
     if (file) setFile(null)
+  }
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !loading) {
+      validateAndSubmit()
+    }
   }
 
   const clearSelection = () => {
@@ -109,6 +146,9 @@ export default function RepoInput({ onScan, loading, error: externalError }) {
   }
 
   const hasInput = url.length > 0 || file !== null
+
+  // Dynamic icon based on input type
+  const InputIcon = inputType === 'repo' ? GitBranch : inputType === 'url' ? Globe : Globe
 
   return (
     <div className="w-full max-w-2xl mx-auto animate-fade-in-up">
@@ -122,25 +162,36 @@ export default function RepoInput({ onScan, loading, error: externalError }) {
         <div className="p-6 sm:p-8">
           {/* URL Input */}
           <div className="relative group">
-            <div className={`absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none transition-colors duration-200 ${url ? 'text-brand-400' : 'text-surface-500 group-focus-within:text-brand-400'}`}>
-              <GithubIcon className="w-5 h-5" />
+            <div className={`absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none transition-colors duration-200 ${url ? (inputType === 'repo' ? 'text-brand-400' : 'text-accent-400') : 'text-surface-500 group-focus-within:text-brand-400'}`}>
+              <InputIcon className="w-5 h-5" />
             </div>
             <input
               type="text"
               className="block w-full pl-12 pr-12 py-3.5 bg-navy-900/50 border border-surface-700 rounded-xl text-white placeholder-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500 transition-all duration-200 shadow-inner"
-              placeholder="https://github.com/username/repository"
+              placeholder="Enter any URL, repo link, or domain — e.g. github.com/owner/repo or example.com"
               value={url}
               onChange={handleUrlChange}
+              onKeyDown={handleKeyDown}
               disabled={loading || file !== null}
             />
             {url && !loading && (
-              <button 
-                onClick={clearSelection}
-                className="absolute inset-y-0 right-0 pr-4 flex items-center text-surface-500 hover:text-white transition-colors"
-                aria-label="Clear URL"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <div className="absolute inset-y-0 right-0 pr-4 flex items-center gap-2">
+                {/* Input type badge */}
+                <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                  inputType === 'repo' 
+                    ? 'bg-brand-500/20 text-brand-400' 
+                    : 'bg-accent-400/20 text-accent-400'
+                }`}>
+                  {inputType === 'repo' ? 'REPO' : 'URL'}
+                </span>
+                <button 
+                  onClick={clearSelection}
+                  className="flex items-center text-surface-500 hover:text-white transition-colors"
+                  aria-label="Clear URL"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             )}
           </div>
 
@@ -170,7 +221,7 @@ export default function RepoInput({ onScan, loading, error: externalError }) {
             onDrop={handleDrop}
             onClick={() => !loading && !url && fileInputRef.current?.click()}
           >
-            <input type="file" ref={fileInputRef} onChange={handleFileSelect} accept=".zip" className="hidden" />
+            <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" />
             
             {file ? (
               <div className="flex flex-col items-center animate-fade-in-up">
@@ -192,7 +243,7 @@ export default function RepoInput({ onScan, loading, error: externalError }) {
                   <UploadCloud className="w-6 h-6" />
                 </div>
                 <p className="text-sm font-medium text-white mb-1">Click to upload or drag and drop</p>
-                <p className="text-xs text-surface-500">ZIP files only (max. 50MB)</p>
+                <p className="text-xs text-surface-500">All files — Code, Archives, Documents, PDFs (max. 500MB)</p>
               </div>
             )}
           </div>
@@ -217,7 +268,7 @@ export default function RepoInput({ onScan, loading, error: externalError }) {
         {/* Security Hint Footer */}
         <div className="bg-navy-950/50 px-6 py-3 border-t border-surface-800/50 flex items-center justify-center gap-2 text-xs text-surface-500">
           <ShieldCheck className="w-3.5 h-3.5 text-brand-400" />
-          <span>All scans are securely processed and not stored on our servers.</span>
+          <span>Accepts Git repos, website URLs, and file uploads. All scans are processed securely.</span>
         </div>
       </div>
     </div>

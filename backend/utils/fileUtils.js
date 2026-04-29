@@ -1,125 +1,123 @@
 const fs = require("fs/promises");
 const path = require("path");
 
-/** File extensions to scan */
-const SCANNABLE_EXTENSIONS = new Set([
-  ".js",
-  ".ts",
-  ".jsx",
-  ".tsx",
-  ".json",
-  ".env",
-  ".py",
-  ".yaml",
-  ".yml",
-  ".toml",
-  ".cfg",
-  ".conf",
-  ".ini",
-  ".sh",
-  ".bash",
-  ".dockerfile",
-]);
-
-/** Directories to always skip */
+// ─── Directories to always skip ───────────────────────────────
 const IGNORED_DIRS = new Set([
-  "node_modules",
-  ".git",
-  "dist",
-  "build",
-  ".next",
-  "__pycache__",
-  ".venv",
-  "venv",
-  ".cache",
-  "coverage",
-  ".nyc_output",
-  "vendor",
+  "node_modules", ".git", "dist", "build", ".next", "__pycache__",
+  ".venv", "venv", ".cache", "coverage", ".nyc_output", "vendor",
+  ".idea", ".vs", ".vscode", "bin", "obj", ".gradle", "target",
+  ".terraform", ".serverless", ".angular", ".nuxt", "bower_components",
+  ".parcel-cache", ".turbo", ".svelte-kit",
 ]);
 
-/** Max file size to read (512KB) — skip anything larger */
-const MAX_FILE_SIZE = 512 * 1024;
+// ─── Binary extensions (skip on sight — no I/O needed) ────────
+const BINARY_EXTENSIONS = new Set([
+  ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".svg", ".webp", ".avif",
+  ".mp3", ".mp4", ".avi", ".mov", ".mkv", ".flv", ".wav", ".ogg", ".webm",
+  ".woff", ".woff2", ".ttf", ".eot", ".otf",
+  ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+  ".zip", ".tar", ".gz", ".rar", ".7z", ".bz2", ".xz", ".tgz",
+  ".exe", ".dll", ".so", ".dylib", ".bin", ".dat", ".img", ".iso",
+  ".pyc", ".pyo", ".class", ".o", ".obj", ".a", ".lib",
+  ".lock", ".map",
+  ".sqlite", ".db", ".mdb",
+  ".DS_Store", ".min.js", ".min.css",
+]);
+
+// ─── Priority extensions (scanned first — most likely to have issues) ──
+const PRIORITY_EXTENSIONS = new Set([
+  ".js", ".ts", ".jsx", ".tsx", ".py", ".rb", ".php",
+  ".java", ".go", ".rs", ".c", ".cpp", ".h", ".cs",
+  ".env", ".sh", ".bash", ".yml", ".yaml", ".toml",
+  ".json", ".xml", ".tf", ".hcl",
+  ".html", ".htm", ".sql",
+  "Dockerfile", "docker-compose.yml",
+]);
+
+/** Max file size per file — 1 MB (larger files are rarely source code) */
+const MAX_FILE_SIZE = 1 * 1024 * 1024;
+
+/** Max total files to scan (prevents runaway scans on monorepos) */
+const MAX_FILES = 5000;
 
 /**
- * Recursively traverse a directory and collect scannable file paths.
- * Skips ignored directories and non-scannable extensions.
- * @param {string} dirPath - Root directory to traverse
- * @returns {Promise<string[]>} Array of absolute file paths
+ * Recursively discover scannable files with parallel directory traversal.
+ * Returns files sorted by priority (likely-vulnerable extensions first).
  */
 async function getScannableFiles(dirPath) {
-  const results = [];
+  const priorityFiles = [];
+  const otherFiles = [];
+  let fileCount = 0;
 
   async function walk(currentDir) {
+    if (fileCount >= MAX_FILES) return;
+
     let entries;
     try {
       entries = await fs.readdir(currentDir, { withFileTypes: true });
     } catch {
-      return; // Skip directories we can't read
+      return;
     }
 
-    const tasks = [];
+    const subdirTasks = [];
 
     for (const entry of entries) {
-      const fullPath = path.join(currentDir, entry.name);
+      if (fileCount >= MAX_FILES) break;
+
+      const name = entry.name;
 
       if (entry.isDirectory()) {
-        if (!IGNORED_DIRS.has(entry.name)) {
-          tasks.push(walk(fullPath));
+        // Fast skip on ignored dirs (Set.has is O(1))
+        if (!IGNORED_DIRS.has(name) && name[0] !== ".") {
+          subdirTasks.push(walk(path.join(currentDir, name)));
         }
       } else if (entry.isFile()) {
-        const ext = path.extname(entry.name).toLowerCase();
-        // Also include files with no extension that might be dotfiles (.env, Dockerfile)
-        const basename = entry.name.toLowerCase();
-        if (
-          SCANNABLE_EXTENSIONS.has(ext) ||
-          basename === ".env" ||
-          basename === ".env.local" ||
-          basename === ".env.production" ||
-          basename === "dockerfile"
-        ) {
-          results.push(fullPath);
+        const ext = path.extname(name).toLowerCase();
+        if (BINARY_EXTENSIONS.has(ext)) continue;
+
+        const fullPath = path.join(currentDir, name);
+        fileCount++;
+
+        // Sort into priority and other buckets
+        if (PRIORITY_EXTENSIONS.has(ext) || name === "Dockerfile" || name === ".env") {
+          priorityFiles.push(fullPath);
+        } else {
+          otherFiles.push(fullPath);
         }
       }
     }
 
-    await Promise.all(tasks);
+    // Traverse subdirectories concurrently
+    if (subdirTasks.length > 0) {
+      await Promise.all(subdirTasks);
+    }
   }
 
   await walk(dirPath);
-  return results;
+
+  // Priority files first, then the rest
+  return priorityFiles.concat(otherFiles);
 }
 
 /**
- * Read a file's content safely. Returns null for binary or oversized files.
- * @param {string} filePath - Absolute path to file
- * @returns {Promise<{content: string, lines: string[]}|null>}
+ * Read file content for scanning — optimized.
+ * Checks size before reading, detects binary via null bytes in first 512 bytes.
  */
 async function readFileSafe(filePath) {
   try {
     const stats = await fs.stat(filePath);
 
-    // Skip files that are too large
-    if (stats.size > MAX_FILE_SIZE) {
-      return null;
-    }
-
-    // Skip empty files
-    if (stats.size === 0) {
-      return null;
-    }
+    // Skip oversized or empty files
+    if (stats.size > MAX_FILE_SIZE || stats.size === 0) return null;
 
     const buffer = await fs.readFile(filePath);
 
-    // Detect binary files — check for null bytes in the first 8KB
-    const sample = buffer.subarray(0, 8192);
-    if (sample.includes(0x00)) {
-      return null;
-    }
+    // Binary detection — check first 512 bytes only (faster than 8KB)
+    const sample = buffer.subarray(0, 512);
+    if (sample.includes(0x00)) return null;
 
     const content = buffer.toString("utf-8");
-    const lines = content.split("\n");
-
-    return { content, lines };
+    return { content, lines: content.split("\n") };
   } catch {
     return null;
   }
@@ -128,7 +126,8 @@ async function readFileSafe(filePath) {
 module.exports = {
   getScannableFiles,
   readFileSafe,
-  SCANNABLE_EXTENSIONS,
   IGNORED_DIRS,
+  BINARY_EXTENSIONS,
   MAX_FILE_SIZE,
+  MAX_FILES,
 };

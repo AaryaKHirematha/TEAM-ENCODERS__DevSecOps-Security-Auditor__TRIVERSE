@@ -63,7 +63,7 @@ export default function Home() {
     setLoading(true)
     setError('')
     try {
-      const data = await scanRepository(payload.payload)
+      const data = await scanRepository(payload.payload, payload.type)
       navigate('/dashboard', { state: { scanResult: data } })
     } catch (err) {
       setError(err.message || 'An error occurred during scanning.')
@@ -84,46 +84,36 @@ export default function Home() {
         </div>
 
         <div className="relative max-w-7xl mx-auto w-full z-10">
-          <div className="grid lg:grid-cols-12 gap-12 items-center">
+          <div className="max-w-3xl animate-fade-in-up">
             
-            {/* Left: Text & Scanner */}
-            <div className="lg:col-span-7 xl:col-span-8 animate-fade-in-up">
-              {/* Badge */}
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 mb-6 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold uppercase tracking-widest shadow-[0_0_15px_rgba(16,185,129,0.15)]">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-                </span>
-                Real-time Security Scan
-              </div>
-
-              <h1 className="text-4xl sm:text-5xl lg:text-[3.25rem] font-extrabold tracking-tight text-white leading-[1.15] mb-6">
-                Audit your infrastructure with{' '}
-                <em className="gradient-text not-italic font-extrabold">
-                  surgical precision.
-                </em>
-              </h1>
-
-              <p className="text-base sm:text-lg text-surface-400 leading-relaxed mb-10 max-w-xl">
-                The DevSecOps powerhouse for automated repository scanning,
-                vulnerability orchestration, and real-time compliance reporting.
-              </p>
-
-              {/* Repo Input takes the place of the old buttons */}
-              <div className="mt-4 -ml-2 sm:ml-0">
-                <RepoInput 
-                  onScan={handleScan}
-                  loading={loading}
-                  error={error}
-                />
-              </div>
+            {/* Badge */}
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 mb-6 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold uppercase tracking-widest shadow-[0_0_15px_rgba(16,185,129,0.15)]">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+              </span>
+              Real-time Security Scan
             </div>
 
-            {/* Right: Security Score Card */}
-            <div className="lg:col-span-5 xl:col-span-4 hidden lg:flex justify-end animate-fade-in-up" style={{ animationDelay: '200ms' }}>
-              <div className="animate-float w-full max-w-sm">
-                <SecurityScore />
-              </div>
+            <h1 className="text-4xl sm:text-5xl lg:text-[3.25rem] font-extrabold tracking-tight text-white leading-[1.15] mb-6">
+              Audit your infrastructure with{' '}
+              <em className="gradient-text not-italic font-extrabold">
+                surgical precision.
+              </em>
+            </h1>
+
+            <p className="text-base sm:text-lg text-surface-400 leading-relaxed mb-10 max-w-xl">
+              The DevSecOps powerhouse for automated repository scanning,
+              vulnerability orchestration, and real-time compliance reporting.
+            </p>
+
+            {/* Repo Input takes the place of the old buttons */}
+            <div className="mt-4 -ml-2 sm:ml-0">
+              <RepoInput 
+                onScan={handleScan}
+                loading={loading}
+                error={error}
+              />
             </div>
 
           </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   Shield,
   Home,
@@ -58,6 +58,7 @@ export default function Navbar() {
   const activePath = location.pathname
   const isAuthPage = activePath === '/login'
   const { user } = useAuth()
+  const navigate = useNavigate()
 
   // Close mobile menu on resize to desktop
   useEffect(() => {
@@ -216,10 +217,7 @@ export default function Navbar() {
 
             {/* Scan Repo CTA */}
             <button
-              onClick={() => {
-                const element = document.getElementById('home') || document.body
-                element.scrollIntoView({ behavior: 'smooth' })
-              }}
+              onClick={() => navigate('/')}
               className="
                 hidden sm:inline-flex items-center gap-2 px-5 py-2
                 bg-gradient-to-r from-brand-500 to-brand-600
@@ -338,8 +336,7 @@ export default function Navbar() {
               <button
                 onClick={() => {
                   handleNavClick()
-                  const element = document.getElementById('home') || document.body
-                  element.scrollIntoView({ behavior: 'smooth' })
+                  navigate('/')
                 }}
                 className="
                   w-full flex items-center justify-center gap-2 px-5 py-3

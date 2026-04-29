@@ -6,163 +6,175 @@ const AdmZip = require("adm-zip");
 const os = require("os");
 const crypto = require("crypto");
 
-/**
- * Generate a unique temp directory path for extraction.
- * @returns {string}
- */
+// ─── Temp directory management ────────────────────────────────
+
 function getTempDir() {
   const id = crypto.randomBytes(8).toString("hex");
   return path.join(os.tmpdir(), `secaudit-${id}`);
 }
 
-/**
- * Download a file from a URL, following redirects (up to 5).
- * @param {string} url - The URL to download
- * @returns {Promise<Buffer>}
- */
+// ─── Optimized download with streaming and timeout ────────────
+
+/** Download timeout: 30 seconds */
+const DOWNLOAD_TIMEOUT_MS = 120_000;
+
+/** Max download size: 500 MB */
+const MAX_DOWNLOAD_BYTES = 500 * 1024 * 1024;
+
 function downloadFile(url, redirectCount = 0) {
   return new Promise((resolve, reject) => {
-    if (redirectCount > 5) {
-      return reject(new Error("Too many redirects"));
-    }
+    if (redirectCount > 5) return reject(new Error("Too many redirects"));
 
     const client = url.startsWith("https") ? https : http;
 
-    client
-      .get(url, { headers: { "User-Agent": "SecAudit-Scanner/1.0" } }, (res) => {
-        // Handle redirects
+    const req = client.get(
+      url,
+      { headers: { "User-Agent": "SecAudit-Scanner/2.0" }, timeout: DOWNLOAD_TIMEOUT_MS },
+      (res) => {
         if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
+          res.resume(); // drain the response
           return resolve(downloadFile(res.headers.location, redirectCount + 1));
         }
 
         if (res.statusCode !== 200) {
+          res.resume();
           return reject(new Error(`Download failed with status ${res.statusCode}`));
         }
 
+        // Stream into preallocated buffer chunks
+        let totalBytes = 0;
         const chunks = [];
-        res.on("data", (chunk) => chunks.push(chunk));
-        res.on("end", () => resolve(Buffer.concat(chunks)));
+
+        res.on("data", (chunk) => {
+          totalBytes += chunk.length;
+          if (totalBytes > MAX_DOWNLOAD_BYTES) {
+            res.destroy();
+            return reject(new Error(`Download exceeds ${MAX_DOWNLOAD_BYTES / 1024 / 1024}MB limit`));
+          }
+          chunks.push(chunk);
+        });
+
+        res.on("end", () => resolve(Buffer.concat(chunks, totalBytes)));
         res.on("error", reject);
-      })
-      .on("error", reject);
+      }
+    );
+
+    req.on("timeout", () => {
+      req.destroy();
+      reject(new Error("Download timed out"));
+    });
+
+    req.on("error", reject);
   });
 }
 
-/**
- * Parse a GitHub URL and return the ZIP download URL.
- * Supports formats:
- *   - https://github.com/user/repo
- *   - https://github.com/user/repo.git
- *   - https://github.com/user/repo/tree/branch
- * @param {string} repoUrl
- * @returns {string} ZIP archive download URL
- */
-function getGitHubZipUrl(repoUrl) {
-  // Clean up the URL
-  let cleaned = repoUrl.trim().replace(/\.git$/, "").replace(/\/$/, "");
+// ─── Git platform URL resolution ──────────────────────────────
 
-  // Extract owner/repo and optional branch
-  const treeMatch = cleaned.match(/github\.com\/([^/]+)\/([^/]+)\/tree\/(.+)/);
-  if (treeMatch) {
-    const [, owner, repo, branch] = treeMatch;
-    return `https://github.com/${owner}/${repo}/archive/refs/heads/${branch}.zip`;
-  }
+function getZipUrl(repoUrl, host) {
+  const cleaned = repoUrl.trim().replace(/\.git$/, "").replace(/\/$/, "");
 
-  const repoMatch = cleaned.match(/github\.com\/([^/]+)\/([^/]+)/);
-  if (repoMatch) {
-    const [, owner, repo] = repoMatch;
-    return `https://github.com/${owner}/${repo}/archive/refs/heads/main.zip`;
-  }
-
-  throw new Error(
-    "Invalid GitHub URL. Expected format: https://github.com/owner/repo"
-  );
-}
-
-/**
- * Download and extract a GitHub repository.
- * @param {string} repoUrl - GitHub repository URL
- * @returns {Promise<string>} Path to extracted directory
- */
-async function fetchAndExtractRepo(repoUrl) {
-  const zipUrl = getGitHubZipUrl(repoUrl);
-  const tempDir = getTempDir();
-
-  console.log(`📥 Downloading repository from: ${zipUrl}`);
-
-  let buffer;
-  try {
-    buffer = await downloadFile(zipUrl);
-  } catch (err) {
-    // Try with 'master' branch if 'main' fails
-    if (zipUrl.includes("/main.zip")) {
-      const masterUrl = zipUrl.replace("/main.zip", "/master.zip");
-      console.log(`⚠️  main branch failed, trying master: ${masterUrl}`);
-      buffer = await downloadFile(masterUrl);
-    } else {
-      throw err;
+  if (host.includes("github.com")) {
+    const treeMatch = cleaned.match(/github\.com\/([^/]+)\/([^/]+)\/tree\/(.+)/);
+    if (treeMatch) {
+      const [, owner, repo, branch] = treeMatch;
+      return { primary: `https://github.com/${owner}/${repo}/archive/refs/heads/${branch}.zip`, fallback: null };
+    }
+    const repoMatch = cleaned.match(/github\.com\/([^/]+)\/([^/]+)/);
+    if (repoMatch) {
+      const [, owner, repo] = repoMatch;
+      return {
+        primary: `https://github.com/${owner}/${repo}/archive/refs/heads/main.zip`,
+        fallback: `https://github.com/${owner}/${repo}/archive/refs/heads/master.zip`,
+      };
     }
   }
 
-  console.log(`📦 Downloaded ${(buffer.length / 1024 / 1024).toFixed(2)} MB`);
+  if (host.includes("gitlab")) {
+    const match = cleaned.match(/gitlab\.[^/]+\/(.+)/);
+    if (match) {
+      const projectPath = match[1];
+      const name = projectPath.split("/").pop();
+      return {
+        primary: `https://${host}/${projectPath}/-/archive/main/${name}-main.zip`,
+        fallback: `https://${host}/${projectPath}/-/archive/master/${name}-master.zip`,
+      };
+    }
+  }
 
-  return extractZipBuffer(buffer, tempDir);
+  if (host.includes("bitbucket")) {
+    const match = cleaned.match(/bitbucket\.org\/([^/]+)\/([^/]+)/);
+    if (match) {
+      const [, owner, repo] = match;
+      return {
+        primary: `https://bitbucket.org/${owner}/${repo}/get/main.zip`,
+        fallback: `https://bitbucket.org/${owner}/${repo}/get/master.zip`,
+      };
+    }
+  }
+
+  throw new Error("Could not determine download URL. Supported: GitHub, GitLab, Bitbucket.");
 }
 
-/**
- * Extract a ZIP buffer to a temporary directory.
- * Returns the path to the root content directory.
- * @param {Buffer} buffer - ZIP file content
- * @param {string} tempDir - Destination directory
- * @returns {Promise<string>} Extracted root directory path
- */
+// ─── Extraction ───────────────────────────────────────────────
+
 async function extractZipBuffer(buffer, tempDir) {
   await fs.mkdir(tempDir, { recursive: true });
 
   const zip = new AdmZip(buffer);
   zip.extractAllTo(tempDir, true);
 
-  // GitHub ZIPs contain a single root folder (e.g., repo-main/)
-  // Find it and return that path as the scan root
+  // GitHub ZIPs have a single root folder — unwrap it
   const entries = await fs.readdir(tempDir, { withFileTypes: true });
   const dirs = entries.filter((e) => e.isDirectory());
-
-  if (dirs.length === 1) {
-    return path.join(tempDir, dirs[0].name);
-  }
-
-  return tempDir;
+  return dirs.length === 1 ? path.join(tempDir, dirs[0].name) : tempDir;
 }
 
-/**
- * Extract an uploaded ZIP file.
- * @param {string} filePath - Path to the uploaded ZIP file
- * @returns {Promise<string>} Path to extracted directory
- */
-async function extractUploadedZip(filePath) {
+async function fetchAndExtractRepo(repoUrl, host) {
+  const { primary, fallback } = getZipUrl(repoUrl, host);
   const tempDir = getTempDir();
-  const buffer = await fs.readFile(filePath);
 
-  console.log(`📦 Extracting uploaded file (${(buffer.length / 1024 / 1024).toFixed(2)} MB)`);
+  console.log(`📥 Downloading from: ${primary}`);
 
+  let buffer;
+  try {
+    buffer = await downloadFile(primary);
+  } catch (err) {
+    if (fallback) {
+      console.log(`⚠️  Primary failed, trying fallback: ${fallback}`);
+      buffer = await downloadFile(fallback);
+    } else {
+      throw err;
+    }
+  }
+
+  console.log(`📦 Downloaded ${(buffer.length / 1024 / 1024).toFixed(2)} MB`);
   return extractZipBuffer(buffer, tempDir);
 }
 
-/**
- * Clean up a temporary directory.
- * @param {string} dirPath - Directory to remove
- */
+async function extractUploadedArchive(filePath) {
+  const tempDir = getTempDir();
+  const buffer = await fs.readFile(filePath);
+  console.log(`📦 Extracting archive (${(buffer.length / 1024 / 1024).toFixed(2)} MB)`);
+  return extractZipBuffer(buffer, tempDir);
+}
+
+async function placeSingleFile(filePath, originalName) {
+  const tempDir = getTempDir();
+  await fs.mkdir(tempDir, { recursive: true });
+  await fs.copyFile(filePath, path.join(tempDir, originalName));
+  console.log(`📄 Placed single file: ${originalName}`);
+  return tempDir;
+}
+
+// ─── Cleanup ──────────────────────────────────────────────────
+
 async function cleanup(dirPath) {
   try {
     await fs.rm(dirPath, { recursive: true, force: true });
     console.log(`🧹 Cleaned up temp directory`);
   } catch {
-    // Best-effort cleanup
+    // Best-effort
   }
 }
 
-module.exports = {
-  fetchAndExtractRepo,
-  extractUploadedZip,
-  cleanup,
-};
+module.exports = { fetchAndExtractRepo, extractUploadedArchive, placeSingleFile, cleanup };

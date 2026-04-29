@@ -5,20 +5,10 @@ const { handleScan } = require("../controllers/scanController");
 
 const router = express.Router();
 
-// Configure multer for ZIP uploads
+// Configure multer — accept ALL file types up to 500MB
 const upload = multer({
   dest: path.join(__dirname, "..", "uploads"),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
-  fileFilter: (_req, file, cb) => {
-    if (file.mimetype === "application/zip" ||
-        file.mimetype === "application/x-zip-compressed" ||
-        file.mimetype === "application/octet-stream" ||
-        file.originalname.endsWith(".zip")) {
-      cb(null, true);
-    } else {
-      cb(new Error("Only .zip files are accepted."));
-    }
-  },
+  limits: { fileSize: 500 * 1024 * 1024 }, // 500MB limit
 });
 
 // POST /api/scan
@@ -28,7 +18,7 @@ router.post("/scan", upload.single("file"), handleScan);
 router.use((err, _req, res, _next) => {
   if (err instanceof multer.MulterError) {
     if (err.code === "LIMIT_FILE_SIZE") {
-      return res.status(413).json({ error: "File too large. Maximum size is 10MB." });
+      return res.status(413).json({ error: "File too large. Maximum size is 500MB." });
     }
     return res.status(400).json({ error: err.message });
   }
