@@ -2,6 +2,7 @@ const express = require("express");
 const multer = require("multer");
 const path = require("path");
 const { handleScan } = require("../controllers/scanController");
+const { getHistory, getScanDetails, deleteScan } = require("../controllers/historyController");
 
 const router = express.Router();
 
@@ -13,6 +14,15 @@ const upload = multer({
 
 // POST /api/scan
 router.post("/scan", upload.single("file"), handleScan);
+
+// GET /api/history
+router.get("/history", getHistory);
+
+// GET /api/history/:id
+router.get("/history/:id", getScanDetails);
+
+// DELETE /api/history/:id
+router.delete("/history/:id", deleteScan);
 
 // Multer error handler
 router.use((err, _req, res, _next) => {

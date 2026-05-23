@@ -3,7 +3,7 @@ import { useLocation, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Shield, ArrowLeft, Activity, PieChart, BarChart3, AlertTriangle,
-  Clock, FileWarning, ChevronRight, TrendingDown, Zap, Eye,
+  Clock, FileWarning, ChevronRight, TrendingDown, Zap, Eye, Download
 } from 'lucide-react'
 
 import SecurityScoreGauge from '../components/dashboard/SecurityScoreGauge'
@@ -141,6 +141,17 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+        
+        {/* PDF Export Action */}
+        <div className="flex items-center gap-3 self-start sm:self-end mt-4 sm:mt-0 print:hidden">
+          <button 
+            onClick={() => window.print()}
+            className="flex items-center gap-2 px-4 py-2 bg-brand-500/10 hover:bg-brand-500/20 text-brand-400 border border-brand-500/20 rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-brand-500/5 hover:shadow-brand-500/10"
+          >
+            <Download className="w-4 h-4" />
+            Export PDF Report
+          </button>
+        </div>
       </motion.div>
 
       {/* ─── Severity Stats Row ─── */}
@@ -196,6 +207,17 @@ export default function Dashboard() {
                 Low: { text: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20', dot: 'bg-blue-500' },
               }
               const sc = sevColors[vuln.severity] || sevColors.Low
+              
+              // Map category to compliance framework
+              const getComplianceBadge = (category) => {
+                if (['SQL Injection', 'XSS', 'Code Injection'].includes(category)) return 'OWASP Top 10'
+                if (['Hardcoded Secrets', 'Weak Crypto'].includes(category)) return 'SOC2 Type II'
+                if (['Misconfigurations', 'Security Headers'].includes(category)) return 'PCI-DSS'
+                if (['Dependencies'].includes(category)) return 'NIST CSF'
+                return 'ISO 27001'
+              }
+              const compliance = getComplianceBadge(vuln.category)
+
               return (
                 <motion.div
                   key={vuln.id || i}
@@ -212,7 +234,10 @@ export default function Dashboard() {
                     <span className="text-sm font-semibold text-white truncate block">{vuln.title}</span>
                     <div className="flex items-center gap-2 mt-0.5">
                       {vuln.file && <span className="text-[11px] text-slate-500 truncate">{vuln.file}{vuln.line ? `:${vuln.line}` : ''}</span>}
-                      {vuln.category && <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">{vuln.category}</span>}
+                      {vuln.category && <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">{vuln.category}</span>}
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium">
+                        {compliance}
+                      </span>
                     </div>
                   </div>
                   <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-slate-400 transition-colors flex-shrink-0" />

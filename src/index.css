@@ -314,3 +314,67 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-navy-400);
 }
+
+/* ═══ Floating Particles (Auth Pages) ═══ */
+@keyframes particle-float {
+  0% {
+    transform: translateY(0) translateX(0) scale(1);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.6;
+  }
+  90% {
+    opacity: 0.3;
+  }
+  100% {
+    transform: translateY(-120vh) translateX(30px) scale(0.5);
+    opacity: 0;
+  }
+}
+
+.particle {
+  position: absolute;
+  background: var(--color-brand-400);
+  border-radius: 50%;
+  animation: particle-float linear infinite;
+  opacity: 0;
+  pointer-events: none;
+  box-shadow: 0 0 6px var(--color-brand-500);
+}
+
+/* ═══ Print Export Overrides ═══ */
+@media print {
+  html, body, #root {
+    background: #ffffff !important;
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  
+  .glass-card, 
+  [class*="bg-navy-"], 
+  [class*="bg-surface-"], 
+  [class*="bg-gray-"],
+  [class*="bg-slate-"],
+  [class*="from-slate-"],
+  [class*="to-slate-"],
+  [class*="via-slate-"] {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    background-image: none !important;
+    border-color: #cbd5e1 !important;
+  }
+
+  .text-white, 
+  [class*="text-surface-"],
+  [class*="text-slate-"],
+  [class*="text-gray-"] {
+    color: #000000 !important;
+  }
+}

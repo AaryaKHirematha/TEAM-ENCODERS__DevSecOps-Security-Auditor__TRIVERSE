@@ -75,13 +75,14 @@ function extractDisplayName(url) {
  * Scan a repository/URL/file.
  * Calls the real backend at POST /api/scan.
  */
-export const scanRepository = async (payload, type = 'url') => {
+export const scanRepository = async (payload, type = 'url', userId = null) => {
   let response
 
   if (type === 'file') {
     // File upload — send as FormData
     const formData = new FormData()
     formData.append('file', payload)
+    if (userId) formData.append('userId', userId)
 
     response = await fetch(`${API_BASE}/scan`, {
       method: 'POST',
@@ -89,10 +90,13 @@ export const scanRepository = async (payload, type = 'url') => {
     })
   } else {
     // URL scan — send as JSON
+    const bodyData = { repoUrl: payload }
+    if (userId) bodyData.userId = userId
+
     response = await fetch(`${API_BASE}/scan`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ repoUrl: payload }),
+      body: JSON.stringify(bodyData),
     })
   }
 
@@ -119,4 +123,40 @@ export const getDashboardStats = async () => {
     summary: { totalIssues: 0, critical: 0, high: 0, medium: 0, low: 0 },
     vulnerabilities: [],
   }
+}
+
+/**
+ * Fetch scan history for a user.
+ */
+export const getUserHistory = async (userId) => {
+  if (!userId) return [];
+  const response = await fetch(`${API_BASE}/history?userId=${encodeURIComponent(userId)}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch scan history');
+  }
+  return response.json();
+}
+
+/**
+ * Fetch details of a specific scan.
+ */
+export const getScanDetails = async (scanId) => {
+  const response = await fetch(`${API_BASE}/history/${scanId}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch scan details');
+  }
+  return response.json();
+}
+
+/**
+ * Delete a specific scan from history.
+ */
+export const deleteScanHistory = async (scanId) => {
+  const response = await fetch(`${API_BASE}/history/${scanId}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to delete scan');
+  }
+  return response.json();
 }

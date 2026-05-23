@@ -1,5 +1,8 @@
 import { motion } from 'framer-motion'
 import { AlertTriangle, Shield, ChevronRight } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { getUserHistory } from '../../services/api'
+import { useAuth } from '../../context/AuthContext'
 
 const riskColor = (score) => {
   if (score >= 70) return { text: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20', dot: 'bg-red-500' }
@@ -8,6 +11,42 @@ const riskColor = (score) => {
 }
 
 export default function RiskyProjectsList({ projects }) {
+  const { user } = useAuth()
+  const [historyProjects, setHistoryProjects] = useState(null)
+
+  useEffect(() => {
+    if (!projects && user?.email) {
+      getUserHistory(user.email).then(history => {
+        if (!history || history.length === 0) return
+        
+        const projectMap = {}
+        history.forEach(scan => {
+          const repoPath = scan.repoUrl || 'Unknown'
+          const shortName = repoPath.split('/').pop() || repoPath
+          
+          if (!projectMap[repoPath] || new Date(scan.scanDate) > new Date(projectMap[repoPath].date)) {
+            projectMap[repoPath] = {
+              name: shortName,
+              risk: scan.securityScore ? Math.max(0, 100 - scan.securityScore) : 0,
+              critical: 0, // Not explicitly tracked in history summary yet
+              high: scan.highCount || 0,
+              lang: scan.scanType === 'url' ? 'Web' : 'Code',
+              date: scan.scanDate
+            }
+          }
+        })
+        
+        const sorted = Object.values(projectMap)
+          .sort((a, b) => b.risk - a.risk)
+          .slice(0, 5)
+          
+        if (sorted.length > 0) {
+          setHistoryProjects(sorted)
+        }
+      }).catch(err => console.error("Failed to fetch history for risky projects:", err))
+    }
+  }, [projects, user])
+
   const defaultProjects = [
     { name: 'api-gateway', risk: 87, critical: 5, high: 12, lang: 'Node.js' },
     { name: 'payment-service', risk: 72, critical: 3, high: 8, lang: 'Python' },
@@ -16,7 +55,7 @@ export default function RiskyProjectsList({ projects }) {
     { name: 'data-pipeline', risk: 38, critical: 0, high: 4, lang: 'Python' },
   ]
 
-  const items = projects || defaultProjects
+  const items = projects || historyProjects || defaultProjects
 
   return (
     <motion.div

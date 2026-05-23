@@ -3,10 +3,18 @@ import Navbar from './components/Navbar'
 import Home from './pages/Home'
 import Dashboard from './pages/Dashboard'
 import Login from './pages/Login'
+import SignUp from './pages/SignUp'
+import HistoryPage from './pages/HistoryPage'
+import Integrations from './pages/Integrations'
+import Settings from './pages/Settings'
+import Docs from './pages/Docs'
+import Changelog from './pages/Changelog'
+import ForgotPassword from './pages/ForgotPassword'
 import ProtectedRoute from './components/ProtectedRoute'
 import { Shield } from 'lucide-react'
 import { AuthProvider } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
+import BrandLogo from './components/BrandLogo'
 
 export default function App() {
   return (
@@ -21,7 +29,14 @@ export default function App() {
               <Routes>
                 <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
                 <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                <Route path="/history" element={<ProtectedRoute><HistoryPage /></ProtectedRoute>} />
+                <Route path="/integrations" element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
+                <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+                <Route path="/docs" element={<ProtectedRoute><Docs /></ProtectedRoute>} />
+                <Route path="/changelog" element={<ProtectedRoute><Changelog /></ProtectedRoute>} />
                 <Route path="/login" element={<Login />} />
+                <Route path="/signup" element={<SignUp />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
               </Routes>
             </main>
 
@@ -29,7 +44,7 @@ export default function App() {
             <footer className="py-8 px-4 border-t border-brand-500/10 mt-auto">
               <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="flex items-center gap-2 text-surface-500">
-                  <Shield className="w-4 h-4 text-brand-400" />
+                  <BrandLogo className="w-5 h-5" />
                   <span className="text-sm font-medium">
                     © 2026 SecAudit. All rights reserved.
                   </span>

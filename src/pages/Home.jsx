@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import RepoInput from '../components/RepoInput'
 import SecurityScore from '../components/SecurityScore'
-import { scanRepository } from '../services/api'
+import { scanRepository, getUserHistory } from '../services/api'
+import { useAuth } from '../context/AuthContext'
+import { timeAgo } from '../utils/helpers'
 import {
   Shield,
   Workflow,
@@ -57,13 +59,53 @@ const REPOS = [
 export default function Home() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [recentRepos, setRecentRepos] = useState(null)
   const navigate = useNavigate()
+  const { user } = useAuth()
+
+  useEffect(() => {
+    if (user?.email) {
+      getUserHistory(user.email).then(history => {
+        if (!history || history.length === 0) return
+        
+        const projectMap = {}
+        history.forEach(scan => {
+          const repoPath = scan.repoUrl || 'Unknown'
+          if (!projectMap[repoPath] || new Date(scan.scanDate) > new Date(projectMap[repoPath].scanDate)) {
+            projectMap[repoPath] = scan
+          }
+        })
+        
+        const sorted = Object.values(projectMap)
+          .sort((a, b) => new Date(b.scanDate) - new Date(a.scanDate))
+          .slice(0, 4)
+          .map(scan => {
+             const repoPath = scan.repoUrl || 'Unknown'
+             const shortName = repoPath.split('/').pop() || repoPath
+             return {
+               name: shortName,
+               branch: scan.scanType === 'url' ? scan.repoUrl : 'main',
+               icon: scan.scanType === 'url' ? '🌐' : '🔑',
+               lastScan: timeAgo(scan.scanDate),
+               status: scan.securityScore >= 80 ? 'Passed' : 'Failed',
+               critical: scan.highCount || 0,
+               action: scan.securityScore >= 80 ? 'View Report' : 'Review Issues',
+               rawScan: scan
+             }
+          })
+          
+        if (sorted.length > 0) {
+          setRecentRepos(sorted)
+        }
+      }).catch(err => console.error("Failed to fetch recent repos:", err))
+    }
+  }, [user])
 
   const handleScan = async (payload) => {
     setLoading(true)
     setError('')
     try {
-      const data = await scanRepository(payload.payload, payload.type)
+      const data = await scanRepository(payload.payload, payload.type, user?.email)
       navigate('/dashboard', { state: { scanResult: data } })
     } catch (err) {
       setError(err.message || 'An error occurred during scanning.')
@@ -162,7 +204,10 @@ export default function Home() {
                 Real-time status of your connected codebases
               </p>
             </div>
-            <button className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-surface-700/50 text-sm text-surface-400 hover:text-white hover:border-surface-500/50 transition-all duration-200">
+            <button 
+              onClick={() => navigate('/history')}
+              className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-surface-700/50 text-sm text-surface-400 hover:text-white hover:border-surface-500/50 transition-all duration-200"
+            >
               <Eye className="w-4 h-4" />
               View All
             </button>
@@ -180,19 +225,19 @@ export default function Home() {
             </div>
 
             {/* Rows */}
-            {REPOS.map((repo, index) => (
+            {(recentRepos || REPOS).map((repo, index, arr) => (
               <div
                 key={repo.name}
                 className={`
                   repo-row grid grid-cols-1 sm:grid-cols-12 gap-2 sm:gap-4 px-6 py-4 items-center
-                  ${index < REPOS.length - 1 ? 'border-b border-brand-500/5' : ''}
+                  ${index < arr.length - 1 ? 'border-b border-brand-500/5' : ''}
                 `}
               >
-                <div className="sm:col-span-4 flex items-center gap-3">
-                  <span className="text-lg">{repo.icon}</span>
-                  <div>
-                    <div className="text-sm font-semibold text-white">{repo.name}</div>
-                    <div className="text-xs text-surface-500">{repo.branch}</div>
+                <div className="sm:col-span-4 flex items-center gap-3 min-w-0">
+                  <span className="text-lg flex-shrink-0">{repo.icon}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-white truncate" title={repo.name}>{repo.name}</div>
+                    <div className="text-xs text-surface-500 truncate" title={repo.branch}>{repo.branch}</div>
                   </div>
                 </div>
 
@@ -222,13 +267,30 @@ export default function Home() {
                 </div>
 
                 <div className="sm:col-span-2 sm:text-right">
-                  <a
-                    href="#"
+                  <button
+                    onClick={() => {
+                      if (repo.rawScan) {
+                        const dashboardData = {
+                          repository: repo.rawScan.repoUrl,
+                          timestamp: repo.rawScan.scanDate,
+                          score: repo.rawScan.securityScore,
+                          summary: {
+                            totalIssues: repo.rawScan.totalIssues,
+                            critical: 0,
+                            high: repo.rawScan.highCount,
+                            medium: repo.rawScan.mediumCount,
+                            low: repo.rawScan.lowCount,
+                          },
+                          vulnerabilities: repo.rawScan.results,
+                        }
+                        navigate('/dashboard', { state: { scanResult: dashboardData } })
+                      }
+                    }}
                     className="inline-flex items-center gap-1 text-sm font-medium text-brand-400 hover:text-brand-300 transition-colors duration-200"
                   >
                     {repo.action}
                     <ExternalLink className="w-3 h-3" />
-                  </a>
+                  </button>
                 </div>
               </div>
             ))}

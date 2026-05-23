@@ -7,11 +7,13 @@ import {
   ScanSearch,
   Menu,
   X,
-  User
+  User,
+  History
 } from 'lucide-react'
 import { useScrolled } from '../hooks/useScrolled'
 import { useAuth } from '../context/AuthContext'
 import AccountSidebar from './AccountSidebar'
+import BrandLogo from './BrandLogo'
 
 function GithubIcon({ className }) {
   return (
@@ -21,32 +23,11 @@ function GithubIcon({ className }) {
   )
 }
 
-const BrandLogo = ({ className }) => (
-  <svg className={className} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-    {/* Outer glow ring */}
-    <circle cx="16" cy="16" r="14" stroke="url(#brand-gradient)" strokeWidth="1" strokeOpacity="0.3" strokeDasharray="4 4" className="animate-[spin_10s_linear_infinite]" />
-    
-    {/* Outer Shield Outline */}
-    <path d="M16 4L5 9V16.5C5 22.8 9.6 28.3 16 30C22.4 28.3 27 22.8 27 16.5V9L16 4Z" fill="url(#brand-gradient)" fillOpacity="0.1" stroke="url(#brand-gradient)" strokeWidth="1.5" />
-    
-    {/* Inner Solid Shield */}
-    <path d="M16 8L9 11V16.5C9 20.8 12.1 24.5 16 26C19.9 24.5 23 20.8 23 16.5V11L16 8Z" fill="url(#brand-gradient)" />
-    
-    {/* Center core */}
-    <path d="M16 13L13 15.5L16 18L19 15.5L16 13Z" fill="#ffffff" className="animate-pulse" />
-    
-    <defs>
-      <linearGradient id="brand-gradient" x1="5" y1="4" x2="27" y2="30" gradientUnits="userSpaceOnUse">
-        <stop stopColor="#6366f1" />
-        <stop offset="1" stopColor="#22d3ee" />
-      </linearGradient>
-    </defs>
-  </svg>
-)
 
 const NAV_LINKS = [
   { name: 'Home', href: '/', icon: Home },
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { name: 'History', href: '/history', icon: History },
 ]
 
 export default function Navbar() {
@@ -56,7 +37,7 @@ export default function Navbar() {
   const scrolled = useScrolled(10)
   const location = useLocation()
   const activePath = location.pathname
-  const isAuthPage = activePath === '/login'
+  const isAuthPage = activePath === '/login' || activePath === '/signup'
   const { user } = useAuth()
   const navigate = useNavigate()
 
@@ -104,6 +85,7 @@ export default function Navbar() {
   }, [mobileOpen, closeMobileMenu])
 
   return (
+    <>
     <nav
       className={`
         fixed top-0 left-0 right-0 z-50
@@ -359,11 +341,13 @@ export default function Navbar() {
         </div>
       )}
 
-      {/* Account Sidebar */}
+    </nav>
+
+      {/* Account Sidebar - outside nav to prevent height clipping */}
       <AccountSidebar 
         isOpen={sidebarOpen} 
         onClose={() => setSidebarOpen(false)} 
       />
-    </nav>
+    </>
   )
 }

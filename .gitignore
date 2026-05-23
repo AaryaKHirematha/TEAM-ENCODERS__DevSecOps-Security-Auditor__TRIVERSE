@@ -41,3 +41,9 @@ test-vulnerable-project/
 *.njsproj
 *.sln
 *.sw?
+
+# Local Database and Zips
+backend/secaudit-history.json
+node_modules.zip
+
+backend/test-samples/vulnerable-app/.env

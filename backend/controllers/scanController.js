@@ -1,8 +1,9 @@
-const { fetchAndExtractRepo, extractUploadedArchive, placeSingleFile, cleanup } = require("../services/repoService");
-const { runScan } = require("../services/scannerService");
-const { scanUrl } = require("../services/urlScannerService");
+const { fetchAndExtractRepo, extractUploadedArchive, placeSingleFile, cleanup } = require("../utils/services/repoService");
+const { runScan } = require("../utils/services/scannerService");
+const { scanUrl } = require("../utils/services/urlScannerService");
 const fs = require("fs/promises");
 const path = require("path");
+const Scan = require("../models/Scan");
 
 /** Archive extensions that need extraction */
 const ARCHIVE_EXTENSIONS = new Set([".zip", ".tar", ".gz", ".tgz", ".rar", ".7z", ".bz2"]);
@@ -80,7 +81,7 @@ function normalizeGitUrl(rawUrl) {
  * Auto-detects whether a URL is a git repo or a website to scan.
  */
 async function handleScan(req, res) {
-  const { repoUrl } = req.body;
+  const { repoUrl, userId } = req.body;
   const file = req.file;
 
   if (repoUrl && file) {
@@ -101,6 +102,18 @@ async function handleScan(req, res) {
         // Website URL scan
         const results = await scanUrl(repoUrl);
         console.log("🌐 URL scan complete: " + results.totalIssues + " issues, score " + results.score + "/100");
+        if (userId) {
+          await Scan.create({
+            userId,
+            repoUrl,
+            totalIssues: results.totalIssues,
+            highCount: results.summary?.high || 0,
+            mediumCount: results.summary?.medium || 0,
+            lowCount: results.summary?.low || 0,
+            securityScore: results.score,
+            results: results.issues || [],
+          });
+        }
         return res.json(results);
       }
 
@@ -125,6 +138,18 @@ async function handleScan(req, res) {
     }
 
     const results = await runScan(projectDir);
+    if (userId) {
+      await Scan.create({
+        userId,
+        repoUrl: repoUrl || file.originalname,
+        totalIssues: results.totalIssues,
+        highCount: results.summary?.high || 0,
+        mediumCount: results.summary?.medium || 0,
+        lowCount: results.summary?.low || 0,
+        securityScore: results.score,
+        results: results.issues || [],
+      });
+    }
     res.json(results);
   } catch (err) {
     console.error("Scan error:", err.message);

@@ -1,6 +1,6 @@
 const path = require("path");
-const { securityRules, severityWeights } = require("../utils/rules");
-const { getScannableFiles, readFileSafe } = require("../utils/fileUtils");
+const { securityRules, severityWeights } = require("../rules");
+const { getScannableFiles, readFileSafe } = require("../fileUtils");
 
 // ─── Precompile: build newline offset index once per file ─────
 // Instead of content.substring(0, matchIndex).split('\n').length
