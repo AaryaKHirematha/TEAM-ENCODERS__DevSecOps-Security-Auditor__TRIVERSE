@@ -1,14 +1,15 @@
 const express = require("express");
 const multer = require("multer");
 const path = require("path");
+const os = require("os");
 const { handleScan } = require("../controllers/scanController");
 const { getHistory, getScanDetails, deleteScan } = require("../controllers/historyController");
 
 const router = express.Router();
 
-// Configure multer — accept ALL file types up to 500MB
+// Configure multer — accept ALL file types up to 500MB. Use temp directory for serverless environments.
 const upload = multer({
-  dest: path.join(__dirname, "..", "uploads"),
+  dest: os.tmpdir(),
   limits: { fileSize: 500 * 1024 * 1024 }, // 500MB limit
 });
 

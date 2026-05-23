@@ -116,8 +116,8 @@ function getSummary(issues) {
 /** Concurrency limit for parallel file I/O */
 const CONCURRENCY = 100;
 
-/** Scan timeout — 60 seconds max */
-const SCAN_TIMEOUT_MS = 60_000;
+/** Scan timeout — 60 seconds max locally, 8 seconds on Vercel */
+const SCAN_TIMEOUT_MS = process.env.VERCEL ? 8_000 : 60_000;
 
 async function runScan(projectDir) {
   const t0 = performance.now();

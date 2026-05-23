@@ -1,12 +1,30 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const os = require('os');
 
-const dbPath = path.join(__dirname, '..', 'secaudit-history.json');
+const localDbPath = path.join(__dirname, '..', 'secaudit-history.json');
+let dbPath = localDbPath;
 
-// Initialize DB file
-if (!fs.existsSync(dbPath)) {
-  fs.writeFileSync(dbPath, JSON.stringify([]));
+if (process.env.VERCEL) {
+  const tempDbPath = path.join(os.tmpdir(), 'secaudit-history.json');
+  if (!fs.existsSync(tempDbPath)) {
+    try {
+      if (fs.existsSync(localDbPath)) {
+        fs.copyFileSync(localDbPath, tempDbPath);
+      } else {
+        fs.writeFileSync(tempDbPath, JSON.stringify([]));
+      }
+    } catch (err) {
+      console.error("Failed to copy db to temp dir:", err);
+    }
+  }
+  dbPath = tempDbPath;
+} else {
+  // Initialize DB file locally
+  if (!fs.existsSync(dbPath)) {
+    fs.writeFileSync(dbPath, JSON.stringify([]));
+  }
 }
 
 function readDB() {
