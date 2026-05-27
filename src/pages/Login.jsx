@@ -218,9 +218,14 @@ export default function Login() {
               {/* Email form */}
               <form onSubmit={handleEmailContinue} className="space-y-5">
                 <div>
-                  <label className="block text-sm font-medium text-surface-300 mb-1.5">
-                    Email Address
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-sm font-medium text-surface-300">
+                      Email Address
+                    </label>
+                    <Link to="/forgot-password" className="text-xs font-medium text-brand-400 hover:text-brand-300 transition-colors">
+                      Forgot password?
+                    </Link>
+                  </div>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-surface-500">
                       <Mail className="w-5 h-5" />
@@ -381,7 +386,7 @@ export default function Login() {
 
         {/* Footer info */}
         <p className="text-center text-xs text-surface-500 mt-6">
-          By signing in, you agree to our <a href="#" className="underline hover:text-surface-300">Terms of Service</a> and <a href="#" className="underline hover:text-surface-300">Privacy Policy</a>.
+          By signing in, you agree to our <Link to="/terms" className="underline hover:text-surface-300">Terms of Service</Link> and <Link to="/privacy" className="underline hover:text-surface-300">Privacy Policy</Link>.
         </p>
       </div>
     </div>

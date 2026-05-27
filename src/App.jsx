@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom'
 import Navbar from './components/Navbar'
 import Home from './pages/Home'
 import Dashboard from './pages/Dashboard'
@@ -10,6 +10,9 @@ import Settings from './pages/Settings'
 import Docs from './pages/Docs'
 import Changelog from './pages/Changelog'
 import ForgotPassword from './pages/ForgotPassword'
+import PrivacyPolicy from './pages/PrivacyPolicy'
+import TermsOfService from './pages/TermsOfService'
+import Support from './pages/Support'
 import ProtectedRoute from './components/ProtectedRoute'
 import { Shield } from 'lucide-react'
 import { AuthProvider } from './context/AuthContext'
@@ -34,6 +37,9 @@ export default function App() {
                 <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
                 <Route path="/docs" element={<ProtectedRoute><Docs /></ProtectedRoute>} />
                 <Route path="/changelog" element={<ProtectedRoute><Changelog /></ProtectedRoute>} />
+                <Route path="/privacy" element={<ProtectedRoute><PrivacyPolicy /></ProtectedRoute>} />
+                <Route path="/terms" element={<ProtectedRoute><TermsOfService /></ProtectedRoute>} />
+                <Route path="/support" element={<ProtectedRoute><Support /></ProtectedRoute>} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/signup" element={<SignUp />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -50,15 +56,18 @@ export default function App() {
                   </span>
                 </div>
                 <div className="flex items-center gap-6">
-                  {['Privacy', 'Terms', 'Docs'].map((link) => (
-                    <a
-                      key={link}
-                      href="#"
-                      className="text-sm text-surface-500 hover:text-white transition-colors duration-200"
-                    >
-                      {link}
-                    </a>
-                  ))}
+                  <Link to="/privacy" className="text-sm text-surface-500 hover:text-white transition-colors duration-200">
+                    Privacy
+                  </Link>
+                  <Link to="/terms" className="text-sm text-surface-500 hover:text-white transition-colors duration-200">
+                    Terms
+                  </Link>
+                  <Link to="/support" className="text-sm text-surface-500 hover:text-white transition-colors duration-200">
+                    Support
+                  </Link>
+                  <Link to="/docs" className="text-sm text-surface-500 hover:text-white transition-colors duration-200">
+                    Docs
+                  </Link>
                 </div>
               </div>
             </footer>
