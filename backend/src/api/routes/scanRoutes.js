@@ -1,7 +1,7 @@
 const express = require('express');
 const multer = require('multer');
 const os = require('os');
-const { handleScan } = require('../../../controllers/scanController');
+const { handleAsyncScan } = require('../controllers/scanAsyncController');
 const { authenticate } = require('../middlewares/authMiddleware');
 const { rateLimit } = require('../middlewares/rateLimitMiddleware');
 const { MAX_FILE_SIZE_BYTES } = require('../../../config/constants');
@@ -14,18 +14,18 @@ const upload = multer({
 });
 
 // POST /api/v1/scan
-router.post('/', authenticate, rateLimit({ maxRequests: 20, windowMs: 60000 }), upload.single('file'), handleScan);
+router.post('/', authenticate, rateLimit({ maxRequests: 20, windowMs: 60000 }), upload.single('file'), handleAsyncScan);
 
 // Multer error handler
 router.use((err, _req, res, _next) => {
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.error(413, 'PAYLOAD_TOO_LARGE', 'File too large. Maximum size is 500MB.');
+      return res.status(413).json({ success: false, error: { code: 'PAYLOAD_TOO_LARGE', message: 'File too large. Maximum size is 500MB.' }});
     }
-    return res.error(400, 'BAD_REQUEST', err.message);
+    return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: err.message }});
   }
   if (err) {
-    return res.error(400, 'BAD_REQUEST', err.message);
+    return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: err.message }});
   }
 });
 

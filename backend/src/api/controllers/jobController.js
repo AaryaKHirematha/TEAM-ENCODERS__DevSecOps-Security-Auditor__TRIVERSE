@@ -56,10 +56,10 @@ module.exports = function createJobController(queueProvider, unitOfWork) {
         const paginated = allJobs.slice(startIndex, endIndex).map(j => j.toJSON());
 
         apiMetrics.recordRequest(req.originalUrl.split('?')[0], Date.now() - start, true);
-        return res.success(paginated, { total, page, limit, totalPages: Math.ceil(total / limit) });
+        return res.status(200).json({ success: true, data: paginated, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } });
       } catch (err) {
         apiMetrics.recordRequest(req.originalUrl.split('?')[0], Date.now() - start, false);
-        return res.error(500, 'INTERNAL_ERROR', 'Failed to retrieve jobs', { details: err.message });
+        return res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to retrieve jobs', details: err.message }});
       }
     },
 
@@ -69,65 +69,85 @@ module.exports = function createJobController(queueProvider, unitOfWork) {
 
       if (!validateJobId(jobId)) {
         apiMetrics.recordRequest(req.originalUrl.split('?')[0], Date.now() - start, false, 'validation');
-        return res.error(400, 'INVALID_JOB_ID', 'Job ID format is invalid');
+        return res.status(400).json({ success: false, error: { code: 'INVALID_JOB_ID', message: 'Job ID format is invalid' }});
       }
 
       const job = await unitOfWork.scanJobs.getById(jobId);
       if (!job) {
         apiMetrics.recordRequest(req.originalUrl.split('?')[0], Date.now() - start, false);
-        return res.error(404, 'NOT_FOUND', `Job ${jobId} not found`);
+        return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: `Job ${jobId} not found` }});
       }
 
       if (!isAuthorized(req, job)) {
         apiMetrics.recordRequest(req.originalUrl.split('?')[0], Date.now() - start, false, 'authorization');
-        return res.error(403, 'FORBIDDEN', 'You do not have permission to view this job');
+        return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'You do not have permission to view this job' }});
       }
 
       apiMetrics.recordRequest(req.originalUrl.split('?')[0], Date.now() - start, true);
-      return res.success(job.toJSON());
+      return res.status(200).json({ success: true, data: job.toJSON() });
     },
 
     async getJobStatus(req, res) {
       const start = Date.now();
       const jobId = req.params.id;
       
-      if (!validateJobId(jobId)) {
-         return res.error(400, 'INVALID_JOB_ID', 'Job ID format is invalid');
+      if (!jobId) {
+        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Missing job ID' }});
       }
 
       const job = await unitOfWork.scanJobs.getById(jobId);
-      if (!job) return res.error(404, 'NOT_FOUND', `Job ${jobId} not found`);
-      
-      if (!isAuthorized(req, job)) {
+      if (!job) {
+        return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Job not found' }});
+      }
+
+      // Authorization Check
+      if (job.userId !== req.user.userId && req.user.role !== 'admin') {
         apiMetrics.recordRequest(req.originalUrl.split('?')[0], Date.now() - start, false, 'authorization');
-        return res.error(403, 'FORBIDDEN', 'Unauthorized');
+        return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Access denied' }});
       }
 
       apiMetrics.recordRequest(req.originalUrl.split('?')[0], Date.now() - start, true);
-      return res.success({
+      return res.status(200).json({ success: true, data: {
         jobId: job.id,
         status: job.status,
         progress: job.progressPercentage,
         stage: job.currentStage,
         estimatedWaitTime: job.schedulingContext ? job.schedulingContext.queueTimeMs : 0,
         isDeadLetter: job.isDeadLetter
-      });
+      }});
     },
 
     async getJobResult(req, res) {
       const start = Date.now();
       const jobId = req.params.id;
       
-      const job = await unitOfWork.scanJobs.getById(jobId);
-      if (!job) return res.error(404, 'NOT_FOUND', `Job ${jobId} not found`);
-      if (!isAuthorized(req, job)) return res.error(403, 'FORBIDDEN', 'Unauthorized');
+      if (!jobId) {
+        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Missing job ID' }});
+      }
 
-      if (job.status !== JOB_STATES.COMPLETED) {
-        return res.error(400, 'JOB_NOT_COMPLETED', `Job is currently in state: ${job.status}`);
+      const job = await unitOfWork.scanJobs.getById(jobId);
+      if (!job) {
+        return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Job not found' }});
+      }
+
+      // Authorization Check
+      if (job.userId !== req.user.userId && req.user.role !== 'admin') {
+        apiMetrics.recordRequest(req.originalUrl.split('?')[0], Date.now() - start, false, 'authorization');
+        return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Access denied' }});
+      }
+
+      const result = await unitOfWork.scanResults.getByJobId(jobId);
+      if (!result) {
+        if (job.status === 'COMPLETED') {
+           apiMetrics.recordRequest(req.originalUrl.split('?')[0], Date.now() - start, false, 'not_found');
+           return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Result payload missing' }});
+        }
+        apiMetrics.recordRequest(req.originalUrl.split('?')[0], Date.now() - start, false, 'bad_request');
+        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Job has not completed yet' }});
       }
 
       apiMetrics.recordRequest(req.originalUrl.split('?')[0], Date.now() - start, true);
-      return res.success(job.result);
+      return res.status(200).json({ success: true, data: result });
     },
 
     async deleteJob(req, res) {
@@ -135,20 +155,26 @@ module.exports = function createJobController(queueProvider, unitOfWork) {
       const jobId = req.params.id;
       
       const job = await unitOfWork.scanJobs.getById(jobId);
-      if (!job) return res.error(404, 'NOT_FOUND', `Job ${jobId} not found`);
+      if (!job) {
+         apiMetrics.recordRequest(req.originalUrl.split('?')[0], Date.now() - start, false, 'not_found');
+         return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: `Job ${jobId} not found` }});
+      }
       
       // Only admins or owners can cancel/delete
-      if (!isAuthorized(req, job)) return res.error(403, 'FORBIDDEN', 'Unauthorized');
+      if (!isAuthorized(req, job)) {
+         apiMetrics.recordRequest(req.originalUrl.split('?')[0], Date.now() - start, false, 'authorization');
+         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Unauthorized' }});
+      }
 
       try {
         await queueProvider.removeJob(jobId);
         await unitOfWork.scanJobs.delete(jobId);
         await unitOfWork.commit();
         apiMetrics.recordRequest(req.originalUrl.split('?')[0], Date.now() - start, true);
-        return res.success({ message: `Job ${jobId} cancelled successfully` });
+        return res.status(200).json({ success: true, data: { message: `Job ${jobId} cancelled successfully` }});
       } catch (err) {
         apiMetrics.recordRequest(req.originalUrl.split('?')[0], Date.now() - start, false);
-        return res.error(500, 'CANCELLATION_FAILED', 'Failed to cancel job', { details: err.message });
+        return res.status(500).json({ success: false, error: { code: 'CANCELLATION_FAILED', message: 'Failed to cancel job', details: err.message }});
       }
     }
   };

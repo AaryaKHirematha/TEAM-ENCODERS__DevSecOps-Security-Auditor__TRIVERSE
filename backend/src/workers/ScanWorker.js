@@ -20,6 +20,7 @@ class ScanWorker extends IWorker {
     this.workerId = options.workerId || `worker_${os.hostname()}_${process.pid}_${Math.random().toString(36).substr(2, 4)}`;
     this.executor = options.executor || new SandboxedScanExecutor();
     this.queueProvider = options.queueProvider;
+    this.unitOfWork = options.unitOfWork || require('../persistence/unitOfWorkInstance');
     this.jobType = options.jobType || 'scan';
     
     // Worker Metadata Tracking
@@ -58,7 +59,23 @@ class ScanWorker extends IWorker {
   /**
    * Receive, validate, update state, execute, handle retries and cleanup.
    */
-  async processJob(job) {
+  async processJob(jobData) {
+    // Construct the job domain object from the queue payload
+    let job = typeof jobData.updateProgress === 'function' ? jobData : require('../jobs/ScanJob').ScanJob.fromJSON(jobData);
+    
+    // Idempotency Check: Fetch latest state from DB to prevent duplicate terminal execution
+    if (this.unitOfWork && this.unitOfWork.scanJobs) {
+      const latestJob = await this.unitOfWork.scanJobs.getById(job.id);
+      if (latestJob) {
+        if ([JOB_STATES.COMPLETED, JOB_STATES.FAILED, JOB_STATES.CANCELLED].includes(latestJob.status)) {
+          console.warn(`[ScanWorker] Idempotency check: Job ${job.id} is already ${latestJob.status}. Ignoring duplicate delivery.`);
+          return latestJob.result || { message: 'Duplicate terminal job ignored' };
+        }
+        // Use the latest database state (e.g. for retries where progress was reset)
+        job = latestJob;
+      }
+    }
+
     const cancellationToken = new CancellationToken();
     const correlationId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(7);
 

@@ -32,7 +32,7 @@ function rateLimit(options = { maxRequests: 100, windowMs: 60000 }) {
       const apiMetrics = require('../apiMetrics');
       const routePath = req.originalUrl ? req.originalUrl.split('?')[0] : req.path;
       apiMetrics.recordRequest(routePath, 0, false, 'ratelimit');
-      return res.error(429, 'TOO_MANY_REQUESTS', 'Rate limit exceeded. Try again later.');
+      return res.status(429).json({ success: false, error: { code: 'TOO_MANY_REQUESTS', message: 'Rate limit exceeded. Try again later.' }});
     }
     
     next();

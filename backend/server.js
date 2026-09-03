@@ -1,6 +1,9 @@
 const express = require("express");
 const cors = require("cors");
 const scanRoutes = require("./routes/scanRoutes");
+const asyncScanRoutes = require("./src/api/routes/scanRoutes");
+const jobRoutes = require("./src/api/routes/jobRoutes");
+const apiMetrics = require("./src/api/apiMetrics");
 const { healthCheckService } = require('./src/monitoring/HealthCheckService');
 const { queueService } = require('./src/queue/QueueService');
 const { env } = require('./config/env');
@@ -17,7 +20,10 @@ app.use(express.urlencoded({ extended: true }));
 let isShuttingDown = false;
 
 // Routes
-app.use("/api", scanRoutes);
+app.use("/api", scanRoutes); // Legacy backward-compatible endpoint
+app.use("/api/v1/scan", asyncScanRoutes); // New async endpoint
+app.use("/api/v1/jobs", jobRoutes); // Job status and result endpoint
+app.get("/api/v1/metrics", (req, res) => res.json({ success: true, data: apiMetrics.getMetrics() }));
 
 const healthRouter = express.Router();
 
