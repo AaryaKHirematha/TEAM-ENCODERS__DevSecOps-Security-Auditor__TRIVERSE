@@ -19,13 +19,15 @@ let isShuttingDown = false;
 // Routes
 app.use("/api", scanRoutes);
 
+const healthRouter = express.Router();
+
 // Liveness Probe
-app.get("/health/liveness", (_req, res) => {
+healthRouter.get("/liveness", (_req, res) => {
   res.json({ status: "ok" });
 });
 
 // Readiness Probe
-app.get("/health/readiness", async (_req, res) => {
+healthRouter.get("/readiness", async (_req, res) => {
   if (isShuttingDown) {
     return res.status(503).json({ status: "not_ready" });
   }
@@ -51,10 +53,13 @@ app.get("/health/readiness", async (_req, res) => {
   res.json({ status: "ready" });
 });
 
-// Legacy Health check (Keep for backward compatibility)
-app.get("/health", (_req, res) => {
+// Legacy Health check
+healthRouter.get("/", (_req, res) => {
   res.json({ status: "ok", service: "SecAudit DevSecOps Scanner", uptime: process.uptime() });
 });
+
+app.use("/health", healthRouter);
+app.use("/api/health", healthRouter);
 
 // 404
 app.use((_req, res) => {
