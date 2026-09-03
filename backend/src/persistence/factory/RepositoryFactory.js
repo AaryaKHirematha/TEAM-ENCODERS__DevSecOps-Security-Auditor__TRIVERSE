@@ -42,7 +42,7 @@ class RepositoryFactory {
     } else if (type === 'mongo') {
       const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/secaudit';
       // Mongoose handles connection buffering automatically
-      mongoose.connect(mongoUri, { useNewUrlParser: true, useUnifiedTopology: true })
+      mongoose.connect(mongoUri)
         .catch(err => console.error('[MongoDB] Connection error:', err));
         
       unitOfWork = new MongoUnitOfWork();

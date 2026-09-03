@@ -14,7 +14,13 @@ class BullMQQueueProvider extends IQueueProvider {
   async initialize() {
     try {
       const { Queue } = require('bullmq');
-      this.queue = new Queue(this.name, { connection: this.redisOptions });
+      const IORedis = require('ioredis');
+      
+      const connection = this.redisOptions.url 
+        ? new IORedis(this.redisOptions.url, { maxRetriesPerRequest: null, family: 4, tls: { rejectUnauthorized: false } })
+        : { ...this.redisOptions, maxRetriesPerRequest: null, family: 4, tls: { rejectUnauthorized: false } };
+
+      this.queue = new Queue(this.name, { connection });
       this.isInitialized = true;
     } catch (err) {
       console.warn(`[BullMQQueueProvider] Redis/BullMQ unavailable (${err.message}). Queue provider disabled.`);
@@ -32,12 +38,18 @@ class BullMQQueueProvider extends IQueueProvider {
   }
 
   process(jobType, handler, options = {}) {
-    if (!this.isInitialized) return;
+    console.log('[BullMQQueueProvider] process() called with jobType:', jobType, 'typeof handler:', typeof handler);
     const { Worker } = require('bullmq');
+    const IORedis = require('ioredis');
+    
+    const connection = this.redisOptions.url 
+      ? new IORedis(this.redisOptions.url, { maxRetriesPerRequest: null, family: 4, tls: { rejectUnauthorized: false } })
+      : { ...this.redisOptions, maxRetriesPerRequest: null, family: 4, tls: { rejectUnauthorized: false } };
+
     this.worker = new Worker(this.name, async (job) => {
       jobEvents.emitStarted({ id: job.id, name: job.name, data: job.data });
       return await handler(job.data);
-    }, { connection: this.redisOptions, concurrency: options.concurrency || 4 });
+    }, { connection, concurrency: options.concurrency || 4 });
 
     this.worker.on('completed', (job, result) => {
       jobEvents.emitCompleted({ id: job.id }, result);
@@ -46,6 +58,8 @@ class BullMQQueueProvider extends IQueueProvider {
     this.worker.on('failed', (job, err) => {
       jobEvents.emitFailed({ id: job.id }, err);
     });
+
+    this.worker.on('error', (err) => console.error('[BullMQ Worker Error]', err));
   }
 
   async getJob(jobId) {

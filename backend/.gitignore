@@ -7,3 +7,4 @@ secaudit-*.json*
 tmp_test_ws/
 extract_edits*.js
 extracted_server_edits.txt
+.vercel

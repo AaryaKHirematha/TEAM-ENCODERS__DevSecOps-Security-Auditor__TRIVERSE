@@ -1,25 +1,36 @@
 const assert = require('assert');
+require('dotenv').config();
 const { queueService } = require('./src/queue/QueueService');
-const { jobEvents } = require('./src/events/JobEventEmitter');
+const { jobEvents, JOB_EVENTS } = require('./src/events/JobEvents');
 
 async function testQueueInfrastructure() {
   console.log('🧪 Testing Queue Infrastructure...\n');
 
-  const queue = queueService.getQueue('test-scan-queue', { concurrency: 2 });
+  const queue = queueService.getQueue('scan-queue', { concurrency: 2 });
   assert(queue, 'Queue instance should be created');
+  assert(queue.constructor.name === 'BullMQQueueProvider', 'Must use BullMQQueueProvider, not InMemory');
+  
+  if (queue.queue && queue.queue.client) {
+    queue.queue.client.then(client => {
+      client.on('error', (err) => console.error('Redis Client Error:', err));
+    }).catch(err => console.error('Redis Client Promise Error:', err));
+  } else if (queue.queue) {
+    queue.queue.on('error', (err) => console.error('BullMQ Queue Error:', err));
+  }
 
   let jobQueuedFired = false;
   let jobStartedFired = false;
   let jobCompletedFired = false;
 
-  jobEvents.on('job:queued', () => { jobQueuedFired = true; });
-  jobEvents.on('job:started', () => { jobStartedFired = true; });
-  jobEvents.on('job:completed', () => { jobCompletedFired = true; });
+  jobEvents.on(JOB_EVENTS.JOB_CREATED, () => { jobQueuedFired = true; });
+  jobEvents.on(JOB_EVENTS.JOB_STARTED, () => { jobStartedFired = true; });
+  jobEvents.on(JOB_EVENTS.JOB_COMPLETED, () => { jobCompletedFired = true; });
+  jobEvents.on(JOB_EVENTS.JOB_FAILED, (data) => console.error('[Job Failed]', data.error));
 
   // Test 1: Priority Enqueuing & Delayed Execution
   console.log('Test 1: Enqueuing Priority Jobs');
-  const job1 = await queue.add('scan', { target: 'low-priority' }, { priority: 1, jobId: 'job_low' });
-  const job2 = await queue.add('scan', { target: 'high-priority' }, { priority: 10, jobId: 'job_high' });
+  const job1 = await queue.enqueue('scan', { target: 'low-priority' }, { priority: 10, jobId: 'job_low' });
+  const job2 = await queue.enqueue('scan', { target: 'high-priority' }, { priority: 1, jobId: 'job_high' });
 
   assert.strictEqual(job1.id, 'job_low');
   assert.strictEqual(job2.id, 'job_high');
@@ -30,13 +41,23 @@ async function testQueueInfrastructure() {
   console.log('Test 2: Worker Processing');
   const executedOrder = [];
 
-  queue.process(async (job) => {
-    executedOrder.push(job.id);
+  queue.process('scan', async (jobData) => {
+    console.log('[Worker] Executing job target:', jobData.target);
+    executedOrder.push(jobData.target === 'low-priority' ? 'job_low' : 'job_high');
     await new Promise((resolve) => setTimeout(resolve, 50));
-    return { status: 'success', target: job.data.target };
+    return { status: 'success', target: jobData.target };
   }, { concurrency: 2 });
 
-  await new Promise((resolve) => setTimeout(resolve, 200));
+  await new Promise((resolve) => setTimeout(resolve, 3000));
+  const beforeAssertStats = await queue.getStats();
+  console.log('[Worker] Stats before assert:', beforeAssertStats);
+  
+  if (beforeAssertStats.failed > 0) {
+    const failedJobs = await queue.queue.getFailed();
+    for (const j of failedJobs) {
+      console.log(`Job ${j.id} failed:`, j.failedReason);
+    }
+  }
 
   assert.strictEqual(executedOrder.length, 2);
   assert.strictEqual(executedOrder[0], 'job_high', 'High priority job should run first');
