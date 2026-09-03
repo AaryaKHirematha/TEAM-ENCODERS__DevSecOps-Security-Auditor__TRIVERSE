@@ -67,33 +67,41 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: "Internal server error" });
 });
 
-const server = app.listen(PORT, () => {
-  console.log(`\n  SecAudit Backend running on http://localhost:${PORT}`);
-  console.log(`  POST /api/scan — Submit a repo URL or ZIP for scanning`);
-  console.log(`  GET  /health   — Health check\n`);
-});
-
-server.on("error", (err) => {
-  if (err.code === "EADDRINUSE") {
-    console.log(`⚠️  Port ${PORT} is busy, trying ${+PORT + 1}...`);
-    server.listen(+PORT + 1);
-  } else {
-    console.error("Server error:", err);
-    process.exit(1);
-  }
-});
+let server;
 
 // Graceful shutdown
 const performShutdown = () => {
   if (isShuttingDown) return;
   isShuttingDown = true;
   console.log(`\n[server.js] Shutdown received. Closing server...`);
-  server.close(() => {
+  if (server) {
+    server.close(() => {
+      console.log('Server closed.');
+    });
+  } else {
     console.log('Server closed.');
-  });
+  }
 };
 
 process.on('SIGINT', performShutdown);
 process.on('SIGTERM', performShutdown);
+
+if (require.main === module) {
+  server = app.listen(PORT, () => {
+    console.log(`\n  SecAudit Backend running on http://localhost:${PORT}`);
+    console.log(`  POST /api/scan — Submit a repo URL or ZIP for scanning`);
+    console.log(`  GET  /health   — Health check\n`);
+  });
+
+  server.on("error", (err) => {
+    if (err.code === "EADDRINUSE") {
+      console.log(`⚠️  Port ${PORT} is busy, trying ${+PORT + 1}...`);
+      server.listen(+PORT + 1);
+    } else {
+      console.error("Server error:", err);
+      process.exit(1);
+    }
+  });
+}
 
 module.exports = app;

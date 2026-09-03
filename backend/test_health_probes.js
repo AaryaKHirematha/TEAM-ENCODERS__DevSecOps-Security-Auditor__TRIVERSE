@@ -43,6 +43,9 @@ const runTests = async () => {
   let assertions = 0;
   const pass = (msg) => { console.log(`[PASS] ${msg}`); assertions++; };
   
+  // Explicitly start the server since server.js now requires direct execution for auto-bind
+  serverApp.listen(serverPort);
+
   // Start the worker in the same process
   require('./worker');
 
