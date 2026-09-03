@@ -47,3 +47,5 @@ backend/secaudit-history.json
 node_modules.zip
 
 backend/test-samples/vulnerable-app/.env
+.vercel
+.env*
