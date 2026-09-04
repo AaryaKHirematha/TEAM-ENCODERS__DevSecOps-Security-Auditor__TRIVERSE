@@ -6,7 +6,9 @@ const { jobEvents, JOB_EVENTS } = require('./src/events/JobEvents');
 async function testQueueInfrastructure() {
   console.log('🧪 Testing Queue Infrastructure...\n');
 
-  const queue = queueService.getQueue('scan-queue', { concurrency: 2 });
+  const queueName = `scan-queue-test-${Date.now()}`;
+  console.log(`Using isolated queue: ${queueName}`);
+  const queue = queueService.getQueue(queueName, { concurrency: 2 });
   assert(queue, 'Queue instance should be created');
   assert(queue.constructor.name === 'BullMQQueueProvider', 'Must use BullMQQueueProvider, not InMemory');
   
@@ -48,8 +50,16 @@ async function testQueueInfrastructure() {
     return { status: 'success', target: jobData.target };
   }, { concurrency: 2 });
 
-  await new Promise((resolve) => setTimeout(resolve, 3000));
-  const beforeAssertStats = await queue.getStats();
+  // Deterministic polling for jobs to finish processing
+  let beforeAssertStats;
+  for (let i = 0; i < 60; i++) {
+    beforeAssertStats = await queue.getStats();
+    if (beforeAssertStats.completed === 2) {
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
   console.log('[Worker] Stats before assert:', beforeAssertStats);
   
   if (beforeAssertStats.failed > 0) {

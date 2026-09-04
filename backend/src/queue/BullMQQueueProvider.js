@@ -1,4 +1,4 @@
-const IQueueProvider = require('./IQueueProvider');
+﻿const IQueueProvider = require('./IQueueProvider');
 const { jobEvents } = require('../events/JobEvents');
 
 class BullMQQueueProvider extends IQueueProvider {
@@ -11,14 +11,60 @@ class BullMQQueueProvider extends IQueueProvider {
     this.isInitialized = false;
   }
 
+  _createRedisConnection() {
+    const IORedis = require('ioredis');
+    const url = this.redisOptions.url;
+
+    const baseOpts = {
+      family: 4,
+      maxRetriesPerRequest: null,
+      connectTimeout: 5000,
+      commandTimeout: 5000,
+    };
+
+    if (url) {
+      if (url.startsWith('rediss://')) {
+        baseOpts.tls = {};
+      }
+      return new IORedis(url, baseOpts);
+    }
+
+    if (this.redisOptions.tls === true) {
+       baseOpts.tls = {};
+    } else if (this.redisOptions.tls) {
+       baseOpts.tls = this.redisOptions.tls;
+    }
+
+    return new IORedis({
+      ...this.redisOptions,
+      ...baseOpts
+    });
+  }
+
   async initialize() {
     try {
       const { Queue } = require('bullmq');
-      const IORedis = require('ioredis');
-      
-      const connection = this.redisOptions.url 
-        ? new IORedis(this.redisOptions.url, { maxRetriesPerRequest: null, family: 4, tls: { rejectUnauthorized: false } })
-        : { ...this.redisOptions, maxRetriesPerRequest: null, family: 4, tls: { rejectUnauthorized: false } };
+
+      const connection = this._createRedisConnection();
+
+      // Verify connectivity before declaring initialized
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          connection.disconnect();
+          reject(new Error('Redis connection timeout after 5000ms'));
+        }, 5000);
+
+        connection.once('ready', () => {
+          clearTimeout(timeout);
+          resolve();
+        });
+
+        connection.once('error', (err) => {
+          clearTimeout(timeout);
+          connection.disconnect();
+          reject(new Error(`Redis connection error: ${err.message}`));
+        });
+      });
 
       this.queue = new Queue(this.name, { connection });
       this.isInitialized = true;
@@ -40,11 +86,8 @@ class BullMQQueueProvider extends IQueueProvider {
   process(jobType, handler, options = {}) {
     console.log('[BullMQQueueProvider] process() called with jobType:', jobType, 'typeof handler:', typeof handler);
     const { Worker } = require('bullmq');
-    const IORedis = require('ioredis');
-    
-    const connection = this.redisOptions.url 
-      ? new IORedis(this.redisOptions.url, { maxRetriesPerRequest: null, family: 4, tls: { rejectUnauthorized: false } })
-      : { ...this.redisOptions, maxRetriesPerRequest: null, family: 4, tls: { rejectUnauthorized: false } };
+
+    const connection = this._createRedisConnection();
 
     this.worker = new Worker(this.name, async (job) => {
       jobEvents.emitStarted({ id: job.id, name: job.name, data: job.data });
