@@ -1,4 +1,4 @@
-﻿const IQueueProvider = require('./IQueueProvider');
+const IQueueProvider = require('./IQueueProvider');
 const { jobEvents } = require('../events/JobEvents');
 
 class BullMQQueueProvider extends IQueueProvider {
@@ -42,6 +42,12 @@ class BullMQQueueProvider extends IQueueProvider {
   }
 
   async initialize() {
+    if (this._initPromise) return this._initPromise;
+    this._initPromise = this._doInitialize();
+    return this._initPromise;
+  }
+
+  async _doInitialize() {
     try {
       const { Queue } = require('bullmq');
 
@@ -71,10 +77,15 @@ class BullMQQueueProvider extends IQueueProvider {
     } catch (err) {
       console.warn(`[BullMQQueueProvider] Redis/BullMQ unavailable (${err.message}). Queue provider disabled.`);
       this.isInitialized = false;
+      throw err;
     }
   }
 
   async enqueue(jobType, payload, options = {}) {
+    if (this._initPromise) {
+      await this._initPromise.catch(() => {}); // Wait for initialization to settle
+    }
+
     if (!this.isInitialized || !this.queue) {
       throw new Error('BullMQ queue provider is not initialized or Redis is unreachable');
     }
