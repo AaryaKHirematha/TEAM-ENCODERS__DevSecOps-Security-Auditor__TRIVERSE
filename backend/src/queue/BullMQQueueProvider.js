@@ -42,8 +42,15 @@ class BullMQQueueProvider extends IQueueProvider {
   }
 
   async initialize() {
-    if (this._initPromise) return this._initPromise;
-    this._initPromise = this._doInitialize();
+    if (this.isInitialized && this.queue) {
+      return;
+    }
+    if (this._initPromise) {
+      return this._initPromise;
+    }
+    this._initPromise = this._doInitialize().finally(() => {
+      this._initPromise = null;
+    });
     return this._initPromise;
   }
 
@@ -82,9 +89,7 @@ class BullMQQueueProvider extends IQueueProvider {
   }
 
   async enqueue(jobType, payload, options = {}) {
-    if (this._initPromise) {
-      await this._initPromise.catch(() => {}); // Wait for initialization to settle
-    }
+    await this.initialize();
 
     if (!this.isInitialized || !this.queue) {
       throw new Error('BullMQ queue provider is not initialized or Redis is unreachable');
@@ -117,6 +122,7 @@ class BullMQQueueProvider extends IQueueProvider {
   }
 
   async getJob(jobId) {
+    try { await this.initialize(); } catch(e) {}
     if (!this.queue) return null;
     const job = await this.queue.getJob(jobId);
     if (!job) return null;
@@ -125,6 +131,7 @@ class BullMQQueueProvider extends IQueueProvider {
   }
 
   async removeJob(jobId) {
+    try { await this.initialize(); } catch(e) {}
     if (!this.queue) return false;
     const job = await this.queue.getJob(jobId);
     if (job) {
@@ -135,6 +142,7 @@ class BullMQQueueProvider extends IQueueProvider {
   }
 
   async getStats() {
+    try { await this.initialize(); } catch(e) {}
     if (!this.queue) return { name: this.name, status: 'disabled' };
     const counts = await this.queue.getJobCounts('waiting', 'active', 'completed', 'failed', 'delayed');
     return {

@@ -28,11 +28,6 @@ class QueueService {
         ? { url: process.env.REDIS_URL }
         : { host: process.env.REDIS_HOST || 'localhost', port: parseInt(process.env.REDIS_PORT || '6379', 10) };
       provider = new BullMQQueueProvider(queueName, redisOptions);
-      provider.initialize().catch(() => {
-        console.warn(`[QueueService] Redis connection failed. Falling back to InMemoryQueueProvider for '${queueName}'.`);
-        provider = new InMemoryQueueProvider(queueName, options);
-        this.queues.set(queueName, provider);
-      });
     } else {
       provider = new InMemoryQueueProvider(queueName, options);
     }
