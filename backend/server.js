@@ -12,7 +12,20 @@ const app = express();
 const PORT = env.PORT || process.env.PORT || 5000;
 
 // Middleware
-app.use(cors());
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || '*').split(',').map(o => o.trim());
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow all origins if * is set (or no ALLOWED_ORIGINS configured)
+    if (!origin || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    callback(new Error(`CORS: origin '${origin}' not allowed`));
+  },
+  credentials: true,
+};
+app.use(cors(corsOptions));
+// Handle preflight OPTIONS requests for all routes
+app.options('*', cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
